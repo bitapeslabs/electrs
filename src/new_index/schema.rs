@@ -939,6 +939,28 @@ impl ChainQuery {
             .map(BlockId::from)
     }
 
+    pub fn txs_confirming_blocks(&self, txids: &[Txid]) -> Vec<Option<BlockId>> {
+        let _timer = self.start_timer("txs_confirming_blocks");
+        let headers = self.store.indexed_headers.read().unwrap();
+
+        txids
+            .iter()
+            .map(|txid| {
+                let prefix = TxConfRow::filter(&txid[..]);
+                let mut iter = self.store.txstore_db.iter_scan(&prefix);
+
+                iter.map(TxConfRow::from_row)
+                    .filter_map(|conf| {
+                        // Only keep blockhashes that are in the best chain
+                        let blockhash: BlockHash = deserialize(&conf.key.blockhash).ok()?;
+                        headers.header_by_blockhash(&blockhash)
+                    })
+                    .next()
+                    .map(BlockId::from)
+            })
+            .collect()
+    }
+
     pub fn get_block_status(&self, hash: &BlockHash) -> BlockStatus {
         // TODO differentiate orphaned and non-existing blocks? telling them apart requires
         // an additional db read.

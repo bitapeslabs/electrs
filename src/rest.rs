@@ -14,12 +14,12 @@ use crate::util::{
 };
 #[cfg(not(feature = "liquid"))]
 use bitcoin::consensus::encode;
-
 use bitcoin::hashes::FromSliceError as HashError;
 use bitcoin::hex::{self, DisplayHex, FromHex};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Response, Server, StatusCode};
 use hyperlocal::UnixServerExt;
+use std::collections::BTreeSet;
 use tokio::sync::oneshot;
 
 use std::convert::TryInto;
@@ -506,6 +506,34 @@ fn prepare_txs(
         .collect()
 }
 
+fn prepare_txs_opt(
+    txs: Vec<(Option<Transaction>, Option<BlockId>)>,
+    query: &Query,
+    config: &Config,
+) -> Vec<Option<TransactionValue>> {
+    // 1. Gather every referenced OutPoint from present transactions into a BTreeSet
+    let outpoints: BTreeSet<OutPoint> = txs
+        .iter()
+        .filter_map(|(tx_opt, _)| tx_opt.as_ref())
+        .flat_map(|tx| {
+            tx.input
+                .iter()
+                .filter(|txin| has_prevout(txin))
+                .map(|txin| txin.previous_output)
+        })
+        .collect();
+
+    // 2. Look up all those prev-outputs in one batch
+    let prevouts = query.lookup_txos(outpoints);
+
+    // 3. Build TransactionValue for each present tx; None if the tx is missing
+    txs.into_iter()
+        .map(|(tx_opt, blockid)| {
+            tx_opt.map(|tx| TransactionValue::new(tx, blockid, &prevouts, config))
+        })
+        .collect()
+}
+
 #[tokio::main]
 async fn run_server(config: Arc<Config>, query: Arc<Query>, rx: oneshot::Receiver<()>) {
     let addr = &config.http_addr;
@@ -927,9 +955,22 @@ fn handle_request(
                 }
             };
 
-            let txns = query.lookup_txns(&parsed_txids.txs);
+            if (parsed_txids.txs.len() > 500) {
+                return Err(HttpError::not_found(
+                    "Cannot get more than 500 txs per request".to_string(),
+                ));
+            }
 
-            json_response(txns, TTL_SHORT)
+            let conf_blocks_txs = query.chain().txs_confirming_blocks(&parsed_txids.txs);
+
+            let txns: Vec<(Option<Transaction>, Option<BlockId>)> = query
+                .lookup_txns(&parsed_txids.txs)
+                .iter()
+                .enumerate()
+                .map(|(i, tx)| (tx.clone(), conf_blocks_txs[i]))
+                .collect();
+
+            json_response(prepare_txs_opt(txns, query, config), TTL_SHORT)
         }
 
         (&Method::GET, Some(&"tx"), Some(hash), Some(out_type @ &"hex"), None, None)
