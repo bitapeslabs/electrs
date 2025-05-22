@@ -1,4 +1,3 @@
-
 use crate::chain::{
     address, BlockHash, Network, OutPoint, Script, Sequence, Transaction, TxIn, TxMerkleNode,
     TxOut, Txid,
@@ -6,13 +5,13 @@ use crate::chain::{
 use crate::config::Config;
 use crate::errors;
 use crate::new_index::{compute_script_hash, Query, SpendingInput, Utxo};
+#[cfg(feature = "liquid")]
+use crate::util::optional_value_for_newer_blocks;
 use crate::util::{
     create_socket, electrum_merkle, extract_tx_prevouts, get_innerscripts, get_tx_fee, has_prevout,
     is_coinbase, BlockHeaderMeta, BlockId, FullHash, ScriptToAddr, ScriptToAsm, TransactionStatus,
     DEFAULT_BLOCKHASH,
 };
-#[cfg(feature = "liquid")]
-use crate::util::optional_value_for_newer_blocks;
 #[cfg(not(feature = "liquid"))]
 use bitcoin::consensus::encode;
 
@@ -23,6 +22,7 @@ use hyper::{Body, Method, Response, Server, StatusCode};
 use hyperlocal::UnixServerExt;
 use tokio::sync::oneshot;
 
+use std::convert::TryInto;
 use std::fs;
 use std::str::FromStr;
 
@@ -186,14 +186,18 @@ impl TransactionValue {
             status: Some(TransactionStatus::from(blockid)),
 
             #[cfg(feature = "liquid")]
-            discount_vsize: optional_value_for_newer_blocks(blockid,
-                                                            START_OF_LIQUID_DISCOUNT_CT_POLICY,
-                                                            tx.discount_vsize()),
+            discount_vsize: optional_value_for_newer_blocks(
+                blockid,
+                START_OF_LIQUID_DISCOUNT_CT_POLICY,
+                tx.discount_vsize(),
+            ),
 
             #[cfg(feature = "liquid")]
-            discount_weight: optional_value_for_newer_blocks(blockid,
-                                                             START_OF_LIQUID_DISCOUNT_CT_POLICY,
-                                                             tx.discount_weight()),
+            discount_weight: optional_value_for_newer_blocks(
+                blockid,
+                START_OF_LIQUID_DISCOUNT_CT_POLICY,
+                tx.discount_weight(),
+            ),
         }
     }
 }
@@ -434,6 +438,11 @@ impl From<Utxo> for UtxoValue {
             range_proof: utxo.witness.rangeproof.map(|p| *p),
         }
     }
+}
+
+#[derive(Deserialize)]
+struct BulkTxs {
+    txs: Vec<Txid>,
 }
 
 #[derive(Serialize)]
@@ -909,6 +918,15 @@ fn handle_request(
 
             json_response(tx, ttl)
         }
+        (&Method::GET, Some(&"txs"), None, None, None) => {
+            let hashes: BulkTxs = serde_json::from_slice(
+                body.ok_or_else(|| HttpError::not_found("Missing request body".to_string()))?,
+            )
+            .map_err(|_| HttpError::not_found("Transaction array malformed".to_string()))?;
+
+            json_response(hashes, ttl)
+        }
+
         (&Method::GET, Some(&"tx"), Some(hash), Some(out_type @ &"hex"), None, None)
         | (&Method::GET, Some(&"tx"), Some(hash), Some(out_type @ &"raw"), None, None) => {
             let hash = Txid::from_str(hash)?;
