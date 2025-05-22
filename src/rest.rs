@@ -22,7 +22,6 @@ use hyperlocal::UnixServerExt;
 use std::collections::BTreeSet;
 use tokio::sync::oneshot;
 
-use std::convert::TryInto;
 use std::fs;
 use std::str::FromStr;
 

@@ -17,12 +17,9 @@ use elements::{
     AssetId,
 };
 
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use std::{
-    collections::{BTreeSet, HashMap, HashSet},
-    convert::TryFrom,
-};
 
 use crate::chain::{
     BlockHash, BlockHeader, Network, OutPoint, Script, Transaction, TxOut, Txid, Value,
