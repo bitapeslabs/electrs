@@ -121,6 +121,13 @@ impl Query {
     }
 
     #[trace]
+    pub fn lookup_txns(&self, txids: &Vec<Txid>) -> Vec<Option<Transaction>> {
+        self.chain
+            .lookup_many_txns_bulk(txids)
+            .unwrap_or([].to_vec())
+    }
+
+    #[trace]
     pub fn lookup_raw_txn(&self, txid: &Txid) -> Option<Bytes> {
         self.chain
             .lookup_raw_txn(txid, None)

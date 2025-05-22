@@ -17,9 +17,12 @@ use elements::{
     AssetId,
 };
 
-use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    convert::TryFrom,
+};
 
 use crate::chain::{
     BlockHash, BlockHeader, Network, OutPoint, Script, Transaction, TxOut, Txid, Value,
@@ -831,7 +834,41 @@ impl ChainQuery {
             })
             .collect::<Result<Vec<Transaction>>>()
     }
+    //&TxRow::key(&txid[..])
+    pub fn lookup_many_txns_bulk(&self, txids: &[Txid]) -> Result<Vec<Option<Transaction>>> {
+        let _timer = self.start_timer("lookup_many_txns_bulk");
 
+        // Prepare RocksDB keys
+        let keys: Vec<Vec<u8>> = txids.iter().map(|txid| TxRow::key(&txid[..])).collect();
+
+        // Fetch raw results from RocksDB
+        let result = self.store.txstore_db.multi_get(keys);
+
+        // Parse results into Vec<Option<Transaction>>
+        let txns: Vec<Option<Transaction>> = result
+            .into_iter()
+            .zip(txids)
+            .map(|(res, txid)| match res {
+                Ok(Some(raw)) => match deserialize::<Transaction>(&raw) {
+                    Ok(tx) => {
+                        assert_eq!(*txid, tx.compute_txid());
+                        Some(tx)
+                    }
+                    Err(_) => {
+                        log::warn!("Failed to deserialize txid {}", txid);
+                        None
+                    }
+                },
+                Ok(None) => None,
+                Err(e) => {
+                    log::warn!("Error reading txid {} from DB: {}", txid, e);
+                    None
+                }
+            })
+            .collect();
+
+        Ok(txns)
+    }
     pub fn lookup_txn(&self, txid: &Txid, blockhash: Option<&BlockHash>) -> Option<Transaction> {
         let _timer = self.start_timer("lookup_txn");
         self.lookup_raw_txn(txid, blockhash).map(|rawtx| {

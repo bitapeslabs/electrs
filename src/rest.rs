@@ -918,7 +918,7 @@ fn handle_request(
         }
         (&Method::GET, Some(&"txs"), None, None, None, None) => {
             let hashes = body.to_vec();
-            let parsed: BulkTxs = match serde_json::from_slice(&hashes) {
+            let parsed_txids: BulkTxs = match serde_json::from_slice(&hashes) {
                 Ok(txs) => txs,
                 Err(_) => {
                     return Err(HttpError::not_found(
@@ -926,7 +926,10 @@ fn handle_request(
                     ))
                 }
             };
-            json_response(parsed, 1000)
+
+            let txns = query.lookup_txns(&parsed_txids.txs);
+
+            json_response(txns, TTL_SHORT)
         }
 
         (&Method::GET, Some(&"tx"), Some(hash), Some(out_type @ &"hex"), None, None)
