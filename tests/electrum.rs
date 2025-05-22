@@ -167,7 +167,7 @@ fn test_electrum_raw() {
 
 fn write_and_read(stream: &mut TcpStream, write: &str) -> String {
     stream.write_all(write.as_bytes()).unwrap();
-    stream.write(b"\n").unwrap();
+    stream.write_all(b"\n").unwrap();
     stream.flush().unwrap();
     let mut result = vec![];
     loop {

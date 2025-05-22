@@ -333,8 +333,6 @@ impl TxOutValue {
             "fee"
         } else if script.is_empty() {
             "empty"
-        } else if script.is_op_return() {
-            "op_return"
         } else if script.is_p2pk() {
             "p2pk"
         } else if script.is_p2pkh() {
@@ -440,7 +438,7 @@ impl From<Utxo> for UtxoValue {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct BulkTxs {
     txs: Vec<Txid>,
 }
@@ -918,13 +916,17 @@ fn handle_request(
 
             json_response(tx, ttl)
         }
-        (&Method::GET, Some(&"txs"), None, None, None) => {
-            let hashes: BulkTxs = serde_json::from_slice(
-                body.ok_or_else(|| HttpError::not_found("Missing request body".to_string()))?,
-            )
-            .map_err(|_| HttpError::not_found("Transaction array malformed".to_string()))?;
-
-            json_response(hashes, ttl)
+        (&Method::GET, Some(&"txs"), None, None, None, None) => {
+            let hashes = body.to_vec();
+            let parsed: BulkTxs = match serde_json::from_slice(&hashes) {
+                Ok(txs) => txs,
+                Err(_) => {
+                    return Err(HttpError::not_found(
+                        "Invalid txs body passed in".to_string(),
+                    ))
+                }
+            };
+            json_response(parsed, 1000)
         }
 
         (&Method::GET, Some(&"tx"), Some(hash), Some(out_type @ &"hex"), None, None)
