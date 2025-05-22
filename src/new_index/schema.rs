@@ -947,7 +947,7 @@ impl ChainQuery {
             .iter()
             .map(|txid| {
                 let prefix = TxConfRow::filter(&txid[..]);
-                let mut iter = self.store.txstore_db.iter_scan(&prefix);
+                let iter = self.store.txstore_db.iter_scan(&prefix);
 
                 iter.map(TxConfRow::from_row)
                     .filter_map(|conf| {
