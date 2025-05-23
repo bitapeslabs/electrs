@@ -943,7 +943,7 @@ fn handle_request(
 
             json_response(tx, ttl)
         }
-        (&Method::GET, Some(&"txs"), None, None, None, None) => {
+        (&Method::POST, Some(&"txs"), None, None, None, None) => {
             let hashes = body.to_vec();
             let parsed_txids: BulkTxs = match serde_json::from_slice(&hashes) {
                 Ok(txs) => txs,
