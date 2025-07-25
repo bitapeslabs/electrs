@@ -954,9 +954,9 @@ fn handle_request(
                 }
             };
 
-            if parsed_txids.txs.len() > 500 {
+            if parsed_txids.txs.len() > 5000 {
                 return Err(HttpError::not_found(
-                    "Cannot get more than 500 txs per request".to_string(),
+                    "Cannot get more than 5000 txs per request".to_string(),
                 ));
             }
 
